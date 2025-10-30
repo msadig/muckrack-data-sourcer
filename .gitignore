@@ -1,0 +1,11 @@
+node_modules/
+*.csv
+*.log
+.env
+data/
+logs/
+.claude-code-sadigmuradov/
+.vscode/
+.mcp.json.prvolt
+.DS_Store
+ai-docs/internal/

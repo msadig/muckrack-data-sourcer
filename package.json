@@ -1,0 +1,21 @@
+{
+  "name": "browser-automation-scraper",
+  "version": "1.0.0",
+  "description": "Simple browser automation project for web scraping",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "multilogin": "node src/multilogin-scraper.js",
+    "multilogin-outlets": "node src/multilogin-outlet-scraper.js",
+    "force-stop": "node src/force-stop-profile.js",
+    "install-browsers": "playwright install chromium"
+  },
+  "keywords": ["scraping", "automation", "playwright"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "dotenv": "^16.3.1"
+  }
+}
