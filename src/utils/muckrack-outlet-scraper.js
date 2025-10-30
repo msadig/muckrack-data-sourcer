@@ -88,18 +88,48 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
       }
       debugLog('outletType', { outletType, isVerified });
 
-      // Extract description (paragraph after h1)
+      // Extract description (prefer structured intro, fallback to longer paragraph)
       let description = '';
-      const paragraphs = document.querySelectorAll('p');
-      for (const p of paragraphs) {
-        const text = p.textContent.trim();
-        // Skip short paragraphs and look for descriptive content
-        if (text.length > 50 && !text.includes('Request update') && !text.includes('Share this page')) {
-          description = text;
-          break;
+
+      if (!isPodcast) {
+        const introSelector = "body > div.mr-body.mt-7.mb-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.profile-section.profile-intro.mr-card > div > div > div.flex-grow-1 > div.mt-4";
+        const introEl = document.querySelector(introSelector);
+        if (introEl) {
+          description = introEl.textContent.trim();
+        }
+      } else {
+        const podcastIntroSelector = "body > div.mr-body.my-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.mr-podcast-intro-content.mr-card > section > div > div > div.flex-grow-1 > div.js-show-more";
+        const podcastIntroEl = document.querySelector(podcastIntroSelector);
+        if (podcastIntroEl) {
+          description = podcastIntroEl.textContent.trim();
+        }
+      }
+
+      if (!description) {
+        const paragraphScope = mainInfoCard ? Array.from(mainInfoCard.querySelectorAll('p')) : Array.from(document.querySelectorAll('p'));
+        for (const p of paragraphScope) {
+          const text = p.textContent.trim();
+          if (
+            text.length > 50 &&
+            !/request update/i.test(text) &&
+            !/share this page/i.test(text)
+          ) {
+            description = text;
+            break;
+          }
         }
       }
       debugLog('description', { descLength: description.length });
+
+      // Helper to normalize numeric stats like Similarweb UVM
+      const extractIntegerFromText = (text = '') => {
+        const digitsOnly = text.replace(/[^0-9]/g, '');
+        if (!digitsOnly) {
+          return '';
+        }
+        const parsed = parseInt(digitsOnly, 10);
+        return Number.isNaN(parsed) ? '' : parsed;
+      };
 
       // Extract outlet/podcast details - try podcast selectors first, then fallback to media outlet table
       let network = '';
@@ -108,6 +138,11 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
       let outletLocation = '';
       let domainAuthority = '';
       let scope = '';
+      let mediaMarket = '';
+      let uniqueVisitorsPerMonthSimilarweb = '';
+      let frequency = '';
+      let daysPublished = '';
+      let country = '';
 
       if (isPodcast) {
         // Try podcast-specific selectors first
@@ -115,16 +150,52 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
         language = getText('body > div.mr-body.my-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.mr-podcast-intro-content.mr-card > div > div:nth-child(2) > section:nth-child(1) > div.mr-podcast-intro-section-content > ul > li:nth-child(2) > div.mr-podcast-detail-text', 'language');
         genre = getText('body > div.mr-body.my-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.mr-podcast-intro-content.mr-card > div > div:nth-child(2) > section:nth-child(1) > div.mr-podcast-intro-section-content > ul > li:nth-child(4) > div.mr-podcast-detail-text', 'genre');
         outletLocation = getText('body > div.mr-body.my-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.mr-podcast-intro-content.mr-card > div > div:nth-child(2) > section:nth-child(1) > div.mr-podcast-intro-section-content > ul > li:nth-child(5) > div.mr-podcast-detail-text', 'outletLocation');
+        country = outletLocation;
       } else {
         // Fallback to media outlet detail table
         const outletsTable = document.querySelector("body > div.mr-body.mt-7.mb-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.profile-section.profile-stats.mr-card");
-        outletLocation = outletsTable.querySelector("div.mr-card-content.p-0 > table > tbody > tr:nth-child(3) > td")?.textContent.trim() || '';
-        language = outletsTable.querySelector("div.mr-card-content.p-0 > table > tbody > tr:nth-child(2) > td")?.textContent?.replace(/\s+/g, ' ').trim() || '';
-        domainAuthority = outletsTable.querySelector("div.mr-card-content.p-0 > table > tbody > tr:nth-child(6) > td")?.textContent.trim() || '';
-        scope = outletsTable.querySelector("div.mr-card-content.p-0 > table > tbody > tr:nth-child(1) > td")?.textContent.trim() || '';
+        if (outletsTable) {
+          const rows = outletsTable.querySelectorAll('table tbody tr');
+          rows.forEach(row => {
+            const headerEl = row.querySelector('th') || row.querySelector('td');
+            const valueCells = row.querySelectorAll('td');
+            const valueEl = valueCells.length > 0 ? valueCells[valueCells.length - 1] : null;
+
+            if (!headerEl || !valueEl) {
+              return;
+            }
+
+            const label = headerEl.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
+            const value = valueEl.textContent.replace(/\s+/g, ' ').trim();
+
+            if (!label) {
+              return;
+            }
+
+            if (label.includes('scope')) {
+              scope = value;
+            } else if (label.includes('language')) {
+              language = value;
+            } else if (label.includes('country')) {
+              country = value;
+              outletLocation = value;
+            } else if (label.includes('media market')) {
+              mediaMarket = value;
+            } else if (label.includes('similarweb uvm')) {
+              const cleanedValue = extractIntegerFromText(value);
+              uniqueVisitorsPerMonthSimilarweb = cleanedValue;
+            } else if (label.includes('frequency')) {
+              frequency = value;
+            } else if (label.includes('days published')) {
+              daysPublished = value;
+            } else if (label.includes('domain authority')) {
+              domainAuthority = value;
+            }
+          });
+        }
       }
 
-      debugLog('outlet_details', { network, language, genre, outletLocation, domainAuthority, scope });
+      debugLog('outlet_details', { network, language, genre, outletLocation, domainAuthority, scope, mediaMarket, uniqueVisitorsPerMonthSimilarweb, frequency, daysPublished, country });
 
       // Extract contact information from the Contact section
       const contactSectionElm = document.querySelector("body > div.mr-body.mt-7.mb-7 > div > div:nth-child(2) > div.col-sm-4.d-none.d-sm-block > div > div.profile-section.profile-contact.mr-card.d-none.d-sm-block > div")
@@ -133,9 +204,11 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
       let email = '';
       let contactForm = '';
 
-      const contactHeading = Array.from(contactSectionElm.querySelectorAll('h5')).find(h =>
-        h.textContent.includes('Contact information')
-      );
+      const contactHeading = contactSectionElm
+        ? Array.from(contactSectionElm.querySelectorAll('h5')).find(h =>
+            h.textContent.includes('Contact information')
+          )
+        : null;
 
       if (contactHeading) {
         const contactSection = contactHeading.parentElement;
@@ -289,6 +362,13 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
       creators = Array.from(new Set(creators)); // Remove duplicates
       debugLog('creators', { count: creators.length, creators });
 
+      if (!outletLocation && country) {
+        outletLocation = country;
+      }
+      if (!country && outletLocation) {
+        country = outletLocation;
+      }
+
       const finalData = {
         outletName,
         outletType,
@@ -298,6 +378,7 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
         language,
         genre,
         outletLocation,
+        country,
         address,
         phone,
         email,
@@ -315,7 +396,11 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
         creatorCount: creators.length,
         outletUrl: window.location.href,
         domainAuthority,
-        scope
+        scope,
+        mediaMarket,
+        uniqueVisitorsPerMonthSimilarweb,
+        frequency,
+        daysPublished
       };
 
       debugLog('EXTRACTION_COMPLETE', {

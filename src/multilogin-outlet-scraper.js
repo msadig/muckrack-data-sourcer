@@ -14,8 +14,8 @@ const hasHeadlessArg = args.includes('--headless');
 const hasHeadedArg = args.includes('--headed');
 
 // Configuration
-// const MUCKRACK_SEARCH_URL = 'https://forager.muckrack.com/search/results?sort=outlet_name_a_z&q=&result_type=media_outlet&search_source=homepage&user_recent_search=&embed=&person=&duplicate_group=&person_title=&medialists=&exclude_medialists=&sources=&exclude_sources=&outlet_lists=&exclude_outlet_lists=&covered_topics_any=&covered_topics_all=&covered_topics_none=&beats=&topics_any=&topics_all=&topics_none=&article_types=&exclude_article_types=&stations=&exclude_stations=&networks=&exclude_networks=&programs=&exclude_programs=&domains=&exclude_domains=&daterange_preset=8&daterange_starts=2024-10-27&timerange_starts=12%3A00%20AM&daterange_ends=2025-10-27&timerange_ends=11%3A59%20PM&timezone=&languages=&exclude_languages=&domain_authority_range=&domain_authority_min=&domain_authority_max=&locations=43972&exclude_locations=&dmas=&exclude_dmas=&accepts_contributed=';
-const MUCKRACK_SEARCH_URL = 'https://forager.muckrack.com/search/results?sort=outlet_name_a_z&q=&result_type=media_outlet&search_source=homepage&user_recent_search=&embed=&person=&duplicate_group=&person_title=&medialists=&exclude_medialists=&sources=&exclude_sources=&outlet_lists=&exclude_outlet_lists=&covered_topics_any=&covered_topics_all=&covered_topics_none=&beats=&topics_any=&topics_all=&topics_none=&article_types=&exclude_article_types=&stations=&exclude_stations=&networks=&exclude_networks=&programs=&exclude_programs=&domains=&exclude_domains=&daterange_preset=8&daterange_starts=2024-10-28&timerange_starts=12%3A00%20AM&daterange_ends=2025-10-28&timerange_ends=11%3A59%20PM&timezone=&languages=&exclude_languages=&domain_authority_range=&domain_authority_min=&domain_authority_max=&exclude_media_types=13&check_media_types=exclude&locations=43972&exclude_locations=&dmas=&exclude_dmas=&accepts_contributed=';
+const MUCKRACK_SEARCH_URL = 'https://forager.muckrack.com/search/results?sort=outlet_name_a_z&q=&result_type=media_outlet&search_source=homepage&user_recent_search=&embed=&person=&duplicate_group=&person_title=&medialists=&exclude_medialists=&sources=&exclude_sources=&outlet_lists=&exclude_outlet_lists=&covered_topics_any=&covered_topics_all=&covered_topics_none=&beats=&topics_any=&topics_all=&topics_none=&article_types=&exclude_article_types=&stations=&exclude_stations=&networks=&exclude_networks=&programs=&exclude_programs=&domains=&exclude_domains=&daterange_preset=8&daterange_starts=2024-10-27&timerange_starts=12%3A00%20AM&daterange_ends=2025-10-27&timerange_ends=11%3A59%20PM&timezone=&languages=&exclude_languages=&domain_authority_range=&domain_authority_min=&domain_authority_max=&locations=43972&exclude_locations=&dmas=&exclude_dmas=&accepts_contributed=';
+// const MUCKRACK_SEARCH_URL = 'https://forager.muckrack.com/search/results?sort=outlet_name_a_z&q=&result_type=media_outlet&search_source=homepage&user_recent_search=&embed=&person=&duplicate_group=&person_title=&medialists=&exclude_medialists=&sources=&exclude_sources=&outlet_lists=&exclude_outlet_lists=&covered_topics_any=&covered_topics_all=&covered_topics_none=&beats=&topics_any=&topics_all=&topics_none=&article_types=&exclude_article_types=&stations=&exclude_stations=&networks=&exclude_networks=&programs=&exclude_programs=&domains=&exclude_domains=&daterange_preset=8&daterange_starts=2024-10-28&timerange_starts=12%3A00%20AM&daterange_ends=2025-10-28&timerange_ends=11%3A59%20PM&timezone=&languages=&exclude_languages=&domain_authority_range=&domain_authority_min=&domain_authority_max=&exclude_media_types=13&check_media_types=exclude&locations=43972&exclude_locations=&dmas=&exclude_dmas=&accepts_contributed=';
 const MAX_OUTLETS = 100; // Maximum number of outlets to scrape
 const START_PAGE = 1; // Starting page number (useful for resuming scraping)
 const DELAY_BETWEEN_OUTLETS = 2000; // 2 seconds delay between outlet visits
@@ -226,6 +226,12 @@ async function scrapeWithMultilogin() {
       'Language',
       'Genre',
       'Scope',
+      'Media Market',
+      'Country',
+      'Unique Visitors per Month (Similarweb)',
+      'Frequency',
+      'Days Published',
+      'Listenership',
       'Location',
       'Address',
       'Phone',
@@ -256,6 +262,12 @@ async function scrapeWithMultilogin() {
         escapeCSV(outlet.language),
         escapeCSV(outlet.genre),
         escapeCSV(outlet.scope),
+        escapeCSV(outlet.mediaMarket),
+        escapeCSV(outlet.country),
+        escapeCSV(outlet.uniqueVisitorsPerMonthSimilarweb),
+        escapeCSV(outlet.frequency),
+        escapeCSV(outlet.daysPublished),
+        escapeCSV(outlet.listenership),
         escapeCSV(outlet.outletLocation),
         escapeCSV(outlet.address),
         escapeCSV(outlet.phone),
