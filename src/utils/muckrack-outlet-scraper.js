@@ -148,7 +148,7 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
         // Try podcast-specific selectors first
         network = getText('body > div.mr-body.my-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.mr-podcast-intro-content.mr-card > div > div:nth-child(2) > section:nth-child(1) > div.mr-podcast-intro-section-content > ul > li:nth-child(1) > div:nth-child(2) > a', 'network');
         language = getText('body > div.mr-body.my-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.mr-podcast-intro-content.mr-card > div > div:nth-child(2) > section:nth-child(1) > div.mr-podcast-intro-section-content > ul > li:nth-child(2) > div.mr-podcast-detail-text', 'language');
-        genre = getText('body > div.mr-body.my-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.mr-podcast-intro-content.mr-card > div > div:nth-child(2) > section:nth-child(1) > div.mr-podcast-intro-section-content > ul > li:nth-child(4) > div.mr-podcast-detail-text', 'genre');
+        genre = getText("body > div.mr-body.my-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.mr-podcast-intro-content.mr-card > div > div:nth-child(2) > section:nth-child(1) > div.mr-podcast-intro-section-content > ul > li:nth-child(4) > div.mr-podcast-detail-text", 'genre');
         outletLocation = getText('body > div.mr-body.my-7 > div > div:nth-child(2) > div.col-sm-8 > div > div.mr-podcast-intro-content.mr-card > div > div:nth-child(2) > section:nth-child(1) > div.mr-podcast-intro-section-content > ul > li:nth-child(5) > div.mr-podcast-detail-text', 'outletLocation');
         country = outletLocation;
       } else {
@@ -264,6 +264,8 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
       let linkedinUrl = '';
       let instagramUrl = '';
       let youtubeUrl = '';
+      let pinterestUrl = '';
+      let flickrUrl = '';
 
       const socialHeading = Array.from(document.querySelectorAll('h5')).find(h =>
         h.textContent.includes('Social Media')
@@ -287,12 +289,16 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
                 instagramUrl = href;
               } else if (href.includes('youtube.com') || href.includes('youtu.be')) {
                 youtubeUrl = href;
+              } else if (href.includes('pinterest.com')) {
+                pinterestUrl = href;
+              } else if (href.includes('flickr.com')) {
+                flickrUrl = href;
               }
             }
           });
         }
       }
-      debugLog('social_media', { twitterUrl, facebookUrl, linkedinUrl, instagramUrl, youtubeUrl });
+      debugLog('social_media', { twitterUrl, facebookUrl, linkedinUrl, instagramUrl, youtubeUrl, pinterestUrl, flickrUrl });
 
       // Extract audience metrics
       let listenership = '';
@@ -389,6 +395,8 @@ export async function extractOutletData(page, _outletUrl, isPodcast = false, deb
         linkedinUrl,
         instagramUrl,
         youtubeUrl,
+        pinterestUrl,
+        flickrUrl,
         logoUrl,
         listenership,
         reviews,
