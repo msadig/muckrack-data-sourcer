@@ -1,8 +1,9 @@
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, appendFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Multilogin } from './utils/Multilogin.js';
 import { extractOutletUrls, extractOutletData } from './utils/muckrack-outlet-scraper.js';
+import { ScraperState } from './utils/scraper-state.js';
 import 'dotenv/config';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -12,17 +13,27 @@ const __dirname = dirname(__filename);
 const args = process.argv.slice(2);
 const hasHeadlessArg = args.includes('--headless');
 const hasHeadedArg = args.includes('--headed');
+const shouldResume = args.includes('--resume');
+const shouldFreshStart = args.includes('--fresh');
 
 // Configuration
-// const MUCKRACK_SEARCH_URL = 'https://forager.muckrack.com/search/results?sort=outlet_name_a_z&q=&result_type=media_outlet&search_source=homepage&user_recent_search=&embed=&person=&duplicate_group=&person_title=&medialists=&exclude_medialists=&sources=&exclude_sources=&outlet_lists=&exclude_outlet_lists=&covered_topics_any=&covered_topics_all=&covered_topics_none=&beats=&topics_any=&topics_all=&topics_none=&article_types=&exclude_article_types=&stations=&exclude_stations=&networks=&exclude_networks=&programs=&exclude_programs=&domains=&exclude_domains=&daterange_preset=8&daterange_starts=2024-10-27&timerange_starts=12%3A00%20AM&daterange_ends=2025-10-27&timerange_ends=11%3A59%20PM&timezone=&languages=&exclude_languages=&domain_authority_range=&domain_authority_min=&domain_authority_max=&locations=43972&exclude_locations=&dmas=&exclude_dmas=&accepts_contributed=';
-const MUCKRACK_SEARCH_URL = 'https://forager.muckrack.com/search/results?sort=outlet_name_a_z&q=&result_type=media_outlet&search_source=homepage&user_recent_search=&embed=&person=&duplicate_group=&person_title=&medialists=&exclude_medialists=&sources=&exclude_sources=&outlet_lists=&exclude_outlet_lists=&covered_topics_any=&covered_topics_all=&covered_topics_none=&beats=&topics_any=&topics_all=&topics_none=&article_types=&exclude_article_types=&stations=&exclude_stations=&networks=&exclude_networks=&programs=&exclude_programs=&domains=&exclude_domains=&daterange_preset=8&daterange_starts=2024-10-28&timerange_starts=12%3A00%20AM&daterange_ends=2025-10-28&timerange_ends=11%3A59%20PM&timezone=&languages=&exclude_languages=&domain_authority_range=&domain_authority_min=&domain_authority_max=&exclude_media_types=13&check_media_types=exclude&locations=43972&exclude_locations=&dmas=&exclude_dmas=&accepts_contributed=';
+const MUCKRACK_SEARCH_URL = 'https://forager.muckrack.com/search/results?sort=outlet_name_a_z&q=&result_type=media_outlet&search_source=homepage&user_recent_search=&embed=&person=&duplicate_group=&person_title=&medialists=&exclude_medialists=&sources=&exclude_sources=&outlet_lists=&exclude_outlet_lists=&covered_topics_any=&covered_topics_all=&covered_topics_none=&beats=&topics_any=&topics_all=&topics_none=&article_types=&exclude_article_types=&stations=&exclude_stations=&networks=&exclude_networks=&programs=&exclude_programs=&domains=&exclude_domains=&daterange_preset=8&daterange_starts=2024-10-27&timerange_starts=12%3A00%20AM&daterange_ends=2025-10-27&timerange_ends=11%3A59%20PM&timezone=&languages=&exclude_languages=&domain_authority_range=&domain_authority_min=&domain_authority_max=&domain_authority_range=&domain_authority_min=&domain_authority_max=&locations=43972&exclude_locations=&dmas=&exclude_dmas=&accepts_contributed=';
+// const MUCKRACK_SEARCH_URL = 'https://forager.muckrack.com/search/results?sort=outlet_name_a_z&q=&result_type=media_outlet&search_source=homepage&user_recent_search=&embed=&person=&duplicate_group=&person_title=&medialists=&exclude_medialists=&sources=&exclude_sources=&outlet_lists=&exclude_outlet_lists=&covered_topics_any=&covered_topics_all=&covered_topics_none=&beats=&topics_any=&topics_all=&topics_none=&article_types=&exclude_article_types=&stations=&exclude_stations=&networks=&exclude_networks=&programs=&exclude_programs=&domains=&exclude_domains=&daterange_preset=8&daterange_starts=2024-10-28&timerange_starts=12%3A00%20AM&daterange_ends=2025-10-28&timerange_ends=11%3A59%20PM&timezone=&languages=&exclude_languages=&domain_authority_range=&domain_authority_min=&domain_authority_max=&exclude_media_types=13&check_media_types=exclude&locations=43972&exclude_locations=&dmas=&exclude_dmas=&accepts_contributed=';
 const MAX_OUTLETS = 100; // Maximum number of outlets to scrape
 const START_PAGE = 1; // Starting page number (useful for resuming scraping)
 const DELAY_BETWEEN_OUTLETS = 2000; // 2 seconds delay between outlet visits
 
+// Batch processing configuration
+const PAGES_PER_BATCH = 10; // Process this many pages before saving state
+const BATCH_DELAY_MIN = 4000; // Minimum delay between batches (4 seconds)
+const BATCH_DELAY_MAX = 8000; // Maximum delay between batches (8 seconds)
+const SAVE_INTERVAL = 10; // Save state every N outlets processed
+const MAX_RETRIES = 3; // Maximum retry attempts for failed URLs
+
 // Global references for cleanup
 let globalContext = null;
 let globalMultilogin = null;
+let globalState = null;
 
 /**
  * Convert outlet data to CSV row
@@ -44,6 +55,13 @@ function sleep(ms) {
 }
 
 /**
+ * Get random delay between min and max
+ */
+function getRandomDelay(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+/**
  * Main scraper function using Multilogin cloud browser
  */
 async function scrapeWithMultilogin() {
@@ -55,6 +73,24 @@ async function scrapeWithMultilogin() {
     throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
   }
 
+  // Initialize state manager
+  const dataDir = join(__dirname, '..', 'data');
+  const state = new ScraperState(dataDir);
+  globalState = state;
+
+  // Handle resume vs fresh start
+  if (shouldFreshStart) {
+    console.log('Starting fresh scraping session...');
+    await state.clearState();
+  } else if (shouldResume) {
+    const stats = await state.getStats();
+    console.log('Resuming from previous session...');
+    console.log(`  URLs in queue: ${stats.totalQueued}`);
+    console.log(`  Already visited: ${stats.totalVisited}`);
+    console.log(`  Remaining: ${stats.totalRemaining}`);
+    console.log(`  Failed: ${stats.totalFailed}`);
+  }
+
   // Initialize Multilogin
   const multilogin = new Multilogin({
     folderId: process.env.FOLDER_ID,
@@ -63,12 +99,13 @@ async function scrapeWithMultilogin() {
 
   let browser, context, page;
   const allOutlets = [];
+  let csvFilename = null;
 
   // Store global references for signal handlers
   globalMultilogin = multilogin;
 
   try {
-    console.log('Signing in to Multilogin...');
+    console.log('\nSigning in to Multilogin...');
     await multilogin.signIn({
       email: process.env.MULTILOGIN_EMAIL,
       password: process.env.MULTILOGIN_PASSWORD,
@@ -94,228 +131,287 @@ async function scrapeWithMultilogin() {
     globalContext = context; // Store for signal handlers
     console.log('✓ Browser profile started');
 
-    console.log(`\nNavigating to Muck Rack search page...`);
-    await page.goto(MUCKRACK_SEARCH_URL, {
-      waitUntil: 'networkidle',
-      timeout: 60000
-    });
-    console.log('✓ Page loaded');
+    // PHASE 1: URL COLLECTION (with batch processing)
+    let progress = await state.loadProgress();
+    let startPage = progress.currentPage || START_PAGE;
 
-    // Wait for search results to appear
-    await page.waitForSelector('[role="tabpanel"] h5', { timeout: 30000 });
+    // Only collect URLs if we don't have enough unprocessed ones
+    const unprocessedUrls = await state.getUnprocessedUrls();
+    if (unprocessedUrls.length < MAX_OUTLETS && !shouldResume) {
+      console.log(`\nCollecting outlet URLs from search results...`);
+      console.log(`Starting from page ${startPage}`);
 
-    // Collect outlet URLs from search results using pagination
-    console.log('\nCollecting outlet URLs from search results using pagination...');
+      // Calculate total pages needed
+      const OUTLETS_PER_PAGE = 50;
+      const totalPagesNeeded = Math.ceil(MAX_OUTLETS / OUTLETS_PER_PAGE);
 
-    // Muck Rack shows ~50 outlets per page, calculate how many pages we need
-    const OUTLETS_PER_PAGE = 50;
-    const pagesToLoad = Math.ceil(MAX_OUTLETS / OUTLETS_PER_PAGE);
-    const endPage = START_PAGE + pagesToLoad - 1;
-    console.log(`  Need to scrape ${pagesToLoad} page(s) starting from page ${START_PAGE} to get ${MAX_OUTLETS} outlets`);
+      while (startPage <= totalPagesNeeded) {
+        // Determine batch size (don't exceed total pages needed)
+        const batchEndPage = Math.min(startPage + PAGES_PER_BATCH - 1, totalPagesNeeded);
+        console.log(`\n📦 Processing batch: pages ${startPage} to ${batchEndPage}`);
 
-    let allOutletUrls = [];
+        let batchUrls = [];
 
-    // Iterate through pages using the page parameter
-    for (let pageNum = START_PAGE; pageNum <= endPage; pageNum++) {
-      console.log(`  Scraping page ${pageNum}/${endPage}...`);
+        // Collect URLs for this batch of pages
+        for (let pageNum = startPage; pageNum <= batchEndPage; pageNum++) {
+          console.log(`  Page ${pageNum}/${totalPagesNeeded}...`);
 
-      // Construct URL with page parameter
-      const pageUrl = `${MUCKRACK_SEARCH_URL}&page=${pageNum}`;
+          // Construct URL with page parameter
+          const pageUrl = `${MUCKRACK_SEARCH_URL}&page=${pageNum}`;
 
-      // Navigate to the specific page
-      await page.goto(pageUrl, {
-        waitUntil: 'networkidle',
-        timeout: 60000
-      });
+          // Navigate to the specific page
+          await page.goto(pageUrl, {
+            waitUntil: 'networkidle',
+            timeout: 60000
+          });
 
-      // Wait for search results to appear
-      await page.waitForSelector('[role="tabpanel"] h5', { timeout: 30000 });
+          // Wait for search results to appear
+          await page.waitForSelector('[role="tabpanel"] h5', { timeout: 30000 });
 
-      // Extract outlet URLs from current page
-      const pageOutletUrls = await extractOutletUrls(page);
-      console.log(`    Found ${pageOutletUrls.length} outlets on page ${pageNum}`);
+          // Extract outlet URLs from current page
+          const pageOutletUrls = await extractOutletUrls(page);
+          console.log(`    Found ${pageOutletUrls.length} outlets`);
 
-      // If no outlets found, we've reached the end
-      if (pageOutletUrls.length === 0) {
-        console.log(`    No outlets found on page ${pageNum}, stopping pagination`);
-        break;
-      }
+          if (pageOutletUrls.length === 0) {
+            console.log(`    No outlets found on page ${pageNum}, stopping collection`);
+            break;
+          }
 
-      allOutletUrls = allOutletUrls.concat(pageOutletUrls);
+          batchUrls = batchUrls.concat(pageOutletUrls);
 
-      // Small delay between page requests
-      if (pageNum < endPage) {
-        await sleep(DELAY_BETWEEN_OUTLETS);
-      }
+          // Update progress
+          await state.saveProgress({
+            ...progress,
+            currentPage: pageNum,
+            totalPages: totalPagesNeeded,
+            status: 'collecting_urls'
+          });
 
-      // If we've collected enough outlets, stop early
-      if (allOutletUrls.length >= MAX_OUTLETS) {
-        console.log(`    Collected enough outlets (${allOutletUrls.length}), stopping pagination`);
-        break;
+          // Small delay between pages
+          if (pageNum < batchEndPage) {
+            await sleep(1000);
+          }
+        }
+
+        // Save batch URLs to queue
+        if (batchUrls.length > 0) {
+          console.log(`  💾 Saving batch: ${batchUrls.length} URLs`);
+          await state.saveQueue(batchUrls, true);
+
+          // Update total collected
+          const allQueued = await state.loadQueue();
+          progress.totalUrlsCollected = allQueued.length;
+          await state.saveProgress(progress);
+        }
+
+        // Check if we have enough URLs
+        const currentQueue = await state.loadQueue();
+        if (currentQueue.length >= MAX_OUTLETS) {
+          console.log(`  ✓ Collected enough URLs (${currentQueue.length}), stopping collection`);
+          break;
+        }
+
+        // Random delay between batches (4-8 seconds)
+        if (batchEndPage < totalPagesNeeded) {
+          const batchDelay = getRandomDelay(BATCH_DELAY_MIN, BATCH_DELAY_MAX);
+          console.log(`  ⏱️  Waiting ${Math.round(batchDelay / 1000)} seconds before next batch...`);
+          await sleep(batchDelay);
+        }
+
+        startPage = batchEndPage + 1;
       }
     }
 
-    // Limit to MAX_OUTLETS (in case we got more than expected)
-    let outletUrls = allOutletUrls.slice(0, MAX_OUTLETS);
-    console.log(`\n✓ Collected ${outletUrls.length} outlet URLs from ${Math.min(pagesToLoad, Math.ceil(allOutletUrls.length / OUTLETS_PER_PAGE))} page(s)`);
+    // PHASE 2: DATA EXTRACTION
+    console.log('\n📋 Starting data extraction phase...');
 
-    // Visit each outlet and extract detailed data
-    console.log(`\nStarting detailed outlet extraction...`);
+    // Get unprocessed URLs
+    let urlsToProcess = await state.getUnprocessedUrls(MAX_OUTLETS);
+    console.log(`  URLs to process: ${urlsToProcess.length}`);
+
+    if (urlsToProcess.length === 0) {
+      console.log('  No URLs to process!');
+      return;
+    }
+
+    // Prepare CSV file
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    csvFilename = join(dataDir, `muckrack-outlets-${timestamp}.csv`);
+
+    // Write CSV header if new file
+    if (!existsSync(csvFilename)) {
+      const csvHeader = [
+        'Outlet Name',
+        'Outlet Type',
+        'Verified',
+        'Podcast?',
+        'Description',
+        'Network',
+        'Language',
+        'Genre',
+        'Scope',
+        'Media Market',
+        'Country',
+        'Unique Visitors per Month (Similarweb)',
+        'Frequency',
+        'Days Published',
+        'Listenership',
+        'Location',
+        'Address',
+        'Phone',
+        'Email',
+        'Contact Form',
+        'Website',
+        'Domain Authority',
+        'Twitter URL',
+        'Facebook URL',
+        'LinkedIn URL',
+        'Instagram URL',
+        'YouTube URL',
+        'Pinterest URL',
+        'Flickr URL',
+        'Logo URL',
+        'Outlet URL'
+      ].join(',') + '\n';
+      writeFileSync(csvFilename, csvHeader, 'utf-8');
+    }
+
     let successCount = 0;
     let errorCount = 0;
+    let batchNumber = 1;
+    let batchData = [];
 
-    for (let i = 0; i < outletUrls.length; i++) {
-      const outletUrl = outletUrls[i];
-      const progress = `[${i + 1}/${outletUrls.length}]`;
+    // Process each URL
+    for (let i = 0; i < urlsToProcess.length; i++) {
+      const outletUrl = urlsToProcess[i];
+      const overallProgress = `[${i + 1}/${urlsToProcess.length}]`;
       const isPodcast = outletUrl.toLowerCase().includes('/podcast/');
 
-      try {
-        console.log(`${progress} Visiting: ${outletUrl}`);
-
-        await page.goto(outletUrl, {
-          waitUntil: 'networkidle',
-          timeout: 30000
-        });
-
-        // Wait for outlet content to load
-        await page.waitForSelector('h1', { timeout: 10000 });
-
-        // Extract outlet data
-        const outletData = await extractOutletData(page, outletUrl, isPodcast);
-
-        if (outletData && outletData.outletName) {
-          allOutlets.push(outletData);
-          successCount++;
-          console.log(`${progress} ✓ Extracted: ${outletData.outletName} (${outletData.website || 'no website'})`);
-        } else {
-          errorCount++;
-          console.log(`${progress} ✗ Failed to extract data`);
-        }
-
-        // Delay between outlets to avoid rate limiting
-        if (i < outletUrls.length - 1) {
-          // make wait time random between 1.5x to 2.5x of DELAY_BETWEEN_OUTLETS
-          const randomDelay = DELAY_BETWEEN_OUTLETS * (1.5 + Math.random());
-          console.log(`${progress} Waiting for ${Math.round(randomDelay)}ms before next outlet...`);
-          await sleep(randomDelay);
-        }
-
-      } catch (error) {
-        errorCount++;
-        console.error(`${progress} ✗ Error: ${error.message}`);
-
-        // Continue with next outlet even if one fails
+      // Check if already visited
+      if (await state.isVisited(outletUrl)) {
+        console.log(`${overallProgress} ⏭️  Skipping (already visited): ${outletUrl}`);
         continue;
+      }
+
+      let retryCount = 0;
+      let success = false;
+
+      while (retryCount < MAX_RETRIES && !success) {
+        try {
+          if (retryCount > 0) {
+            console.log(`${overallProgress} 🔄 Retry ${retryCount}/${MAX_RETRIES}: ${outletUrl}`);
+          } else {
+            console.log(`${overallProgress} 🌐 Visiting: ${outletUrl}`);
+          }
+
+          await page.goto(outletUrl, {
+            waitUntil: 'networkidle',
+            timeout: 30000
+          });
+
+          // Wait for outlet content to load
+          await page.waitForSelector('h1', { timeout: 10000 });
+
+          // Extract outlet data
+          const outletData = await extractOutletData(page, outletUrl, isPodcast);
+
+          if (outletData && outletData.outletName) {
+            // Mark as visited
+            await state.markVisited(outletUrl, outletData);
+
+            // Add to batch data
+            batchData.push(outletData);
+            allOutlets.push(outletData);
+
+            // Write to CSV immediately (append mode)
+            const csvRow = createCSVRow(outletData);
+            appendFileSync(csvFilename, csvRow + '\n', 'utf-8');
+
+            successCount++;
+            success = true;
+            console.log(`${overallProgress} ✅ Extracted: ${outletData.outletName} (${outletData.website || 'no website'})`);
+
+            // Save batch if interval reached
+            if (batchData.length >= SAVE_INTERVAL) {
+              await state.saveBatch(batchData, batchNumber++);
+              batchData = [];
+            }
+          } else {
+            throw new Error('Failed to extract data');
+          }
+
+        } catch (error) {
+          retryCount++;
+
+          if (retryCount >= MAX_RETRIES) {
+            errorCount++;
+            console.error(`${overallProgress} ❌ Failed after ${MAX_RETRIES} attempts: ${error.message}`);
+            await state.markFailed(outletUrl, error);
+          } else {
+            // Wait before retry
+            const retryDelay = 3000 * retryCount;
+            console.log(`${overallProgress} ⏳ Waiting ${retryDelay / 1000}s before retry...`);
+            await sleep(retryDelay);
+          }
+        }
+      }
+
+      // Delay between outlets
+      if (i < urlsToProcess.length - 1 && success) {
+        const randomDelay = DELAY_BETWEEN_OUTLETS * (1.5 + Math.random());
+        console.log(`${overallProgress} ⏱️  Waiting ${Math.round(randomDelay / 1000)}s before next outlet...`);
+        await sleep(randomDelay);
+      }
+
+      // Update progress periodically
+      if ((i + 1) % 5 === 0) {
+        const stats = await state.getStats();
+        await state.saveProgress({
+          ...progress,
+          totalUrlsProcessed: stats.totalVisited,
+          totalUrlsFailed: stats.totalFailed,
+          status: 'extracting_data'
+        });
       }
     }
 
-    console.log(`\n✓ Extraction complete!`);
-    console.log(`  Successful: ${successCount}`);
-    console.log(`  Failed: ${errorCount}`);
-    console.log(`  Total: ${allOutlets.length} outlets`);
-
-    // Convert to CSV
-    console.log('\nConverting to CSV...');
-    const csvHeader = [
-      'Outlet Name',
-      'Outlet Type',
-      'Verified',
-      'Podcast?',
-      'Description',
-      'Network',
-      'Language',
-      'Genre',
-      'Scope',
-      'Media Market',
-      'Country',
-      'Unique Visitors per Month (Similarweb)',
-      'Frequency',
-      'Days Published',
-      'Listenership',
-      'Location',
-      'Address',
-      'Phone',
-      'Email',
-      'Contact Form',
-      'Website',
-      'Domain Authority',
-      'Twitter URL',
-      'Facebook URL',
-      'LinkedIn URL',
-      'Instagram URL',
-      'YouTube URL',
-      'Pinterest URL',
-      'Flickr URL',
-      'Logo URL',
-      'Outlet URL'
-    ].join(',') + '\n';
-
-    const csvRows = allOutlets.map(outlet => {
-      // Determine if it's a podcast from the outlet URL
-      const isPodcast = outlet.outletUrl && outlet.outletUrl.toLowerCase().includes('/podcast/');
-
-      return [
-        escapeCSV(outlet.outletName),
-        escapeCSV(outlet.outletType),
-        outlet.isVerified ? 'Yes' : 'No',
-        isPodcast ? 'Yes' : 'No',
-        escapeCSV(outlet.description),
-        escapeCSV(outlet.network),
-        escapeCSV(outlet.language),
-        escapeCSV(outlet.genre),
-        escapeCSV(outlet.scope),
-        escapeCSV(outlet.mediaMarket),
-        escapeCSV(outlet.country),
-        escapeCSV(outlet.uniqueVisitorsPerMonthSimilarweb),
-        escapeCSV(outlet.frequency),
-        escapeCSV(outlet.daysPublished),
-        escapeCSV(outlet.listenership),
-        escapeCSV(outlet.outletLocation),
-        escapeCSV(outlet.address),
-        escapeCSV(outlet.phone),
-        escapeCSV(outlet.email),
-        escapeCSV(outlet.contactForm),
-        escapeCSV(outlet.website),
-        escapeCSV(outlet.domainAuthority),
-        escapeCSV(outlet.twitterUrl),
-        escapeCSV(outlet.facebookUrl),
-        escapeCSV(outlet.linkedinUrl),
-        escapeCSV(outlet.instagramUrl),
-        escapeCSV(outlet.youtubeUrl),
-        escapeCSV(outlet.pinterestUrl),
-        escapeCSV(outlet.flickrUrl),
-        escapeCSV(outlet.logoUrl),
-        escapeCSV(outlet.outletUrl)
-      ].join(',');
-    }).join('\n');
-
-    const csvContent = csvHeader + csvRows;
-
-    // Save to file
-    const dataDir = join(__dirname, '..', 'data');
-
-    // Ensure data directory exists
-    if (!existsSync(dataDir)) {
-      mkdirSync(dataDir, { recursive: true });
+    // Save final batch if any
+    if (batchData.length > 0) {
+      await state.saveBatch(batchData, batchNumber);
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = join(dataDir, `muckrack-outlets-${timestamp}.csv`);
-    writeFileSync(filename, csvContent, 'utf-8');
+    // Final statistics
+    const finalStats = await state.getStats();
+    console.log(`\n✅ Extraction complete!`);
+    console.log(`  Successful: ${successCount}`);
+    console.log(`  Failed: ${errorCount}`);
+    console.log(`  Total processed: ${finalStats.totalVisited}`);
+    console.log(`  CSV saved to: ${csvFilename}`);
 
-    console.log(`✓ Data saved to ${filename}`);
-    console.log(`\nSummary:`);
-    console.log(`  Total outlets: ${allOutlets.length}`);
-    console.log(`  Verified outlets: ${allOutlets.filter(o => o.isVerified).length}`);
-    console.log(`  With websites: ${allOutlets.filter(o => o.website).length}`);
-    console.log(`  With emails: ${allOutlets.filter(o => o.email).length}`);
-    console.log(`  With phone numbers: ${allOutlets.filter(o => o.phone).length}`);
-    console.log(`  With Twitter: ${allOutlets.filter(o => o.twitterUrl).length}`);
+    if (allOutlets.length > 0) {
+      console.log(`\n📊 Summary:`);
+      console.log(`  Total outlets: ${allOutlets.length}`);
+      console.log(`  Verified outlets: ${allOutlets.filter(o => o.isVerified).length}`);
+      console.log(`  With websites: ${allOutlets.filter(o => o.website).length}`);
+      console.log(`  With emails: ${allOutlets.filter(o => o.email).length}`);
+      console.log(`  With phone numbers: ${allOutlets.filter(o => o.phone).length}`);
+      console.log(`  With Twitter: ${allOutlets.filter(o => o.twitterUrl).length}`);
+    }
 
   } catch (error) {
     console.error('Error during scraping:', error.message);
     throw error;
   } finally {
+    // Save final state
+    if (globalState) {
+      const finalProgress = await globalState.loadProgress();
+      await globalState.saveProgress({
+        ...finalProgress,
+        status: 'completed',
+        lastUpdated: new Date().toISOString()
+      });
+    }
+
     // Clean up: Close browser and stop profile
     try {
       if (context) {
@@ -333,12 +429,70 @@ async function scrapeWithMultilogin() {
 }
 
 /**
+ * Create CSV row from outlet data
+ */
+function createCSVRow(outlet) {
+  const isPodcast = outlet.outletUrl && outlet.outletUrl.toLowerCase().includes('/podcast/');
+
+  return [
+    escapeCSV(outlet.outletName),
+    escapeCSV(outlet.outletType),
+    outlet.isVerified ? 'Yes' : 'No',
+    isPodcast ? 'Yes' : 'No',
+    escapeCSV(outlet.description),
+    escapeCSV(outlet.network),
+    escapeCSV(outlet.language),
+    escapeCSV(outlet.genre),
+    escapeCSV(outlet.scope),
+    escapeCSV(outlet.mediaMarket),
+    escapeCSV(outlet.country),
+    escapeCSV(outlet.uniqueVisitorsPerMonthSimilarweb),
+    escapeCSV(outlet.frequency),
+    escapeCSV(outlet.daysPublished),
+    escapeCSV(outlet.listenership),
+    escapeCSV(outlet.outletLocation),
+    escapeCSV(outlet.address),
+    escapeCSV(outlet.phone),
+    escapeCSV(outlet.email),
+    escapeCSV(outlet.contactForm),
+    escapeCSV(outlet.website),
+    escapeCSV(outlet.domainAuthority),
+    escapeCSV(outlet.twitterUrl),
+    escapeCSV(outlet.facebookUrl),
+    escapeCSV(outlet.linkedinUrl),
+    escapeCSV(outlet.instagramUrl),
+    escapeCSV(outlet.youtubeUrl),
+    escapeCSV(outlet.pinterestUrl),
+    escapeCSV(outlet.flickrUrl),
+    escapeCSV(outlet.logoUrl),
+    escapeCSV(outlet.outletUrl)
+  ].join(',');
+}
+
+/**
  * Cleanup function for graceful shutdown
  */
 async function cleanup() {
   console.log('\n\n⚠️  Interrupt received, cleaning up...');
 
   try {
+    // Save current state before exiting
+    if (globalState) {
+      console.log('Saving current state...');
+      const progress = await globalState.loadProgress();
+      await globalState.saveProgress({
+        ...progress,
+        status: 'interrupted',
+        lastUpdated: new Date().toISOString()
+      });
+
+      const stats = await globalState.getStats();
+      console.log(`  URLs collected: ${stats.totalQueued}`);
+      console.log(`  URLs processed: ${stats.totalVisited}`);
+      console.log(`  URLs remaining: ${stats.totalRemaining}`);
+      console.log(`\n💡 Run with --resume flag to continue from this point`);
+    }
+
     if (globalContext) {
       console.log('Closing browser context...');
       await globalContext.close().catch(() => {});
@@ -361,12 +515,36 @@ async function cleanup() {
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
 
+// Display help if requested
+if (args.includes('--help') || args.includes('-h')) {
+  console.log('Muck Rack Outlet Scraper\n');
+  console.log('Usage: node multilogin-outlet-scraper.js [options]\n');
+  console.log('Options:');
+  console.log('  --headless    Run browser in headless mode');
+  console.log('  --headed      Run browser in headed mode (visible)');
+  console.log('  --resume      Resume from previous interrupted session');
+  console.log('  --fresh       Start fresh, clearing any existing state');
+  console.log('  --help, -h    Show this help message\n');
+  console.log('Configuration (via environment variables):');
+  console.log('  MULTILOGIN_EMAIL     Multilogin account email');
+  console.log('  MULTILOGIN_PASSWORD  Multilogin account password');
+  console.log('  FOLDER_ID           Multilogin folder ID');
+  console.log('  PROFILE_ID          Multilogin profile ID');
+  console.log('  HEADLESS            Default headless mode (true/false)');
+  process.exit(0);
+}
+
 // Run the scraper
 console.log('=== Muck Rack Outlet Scraper Started ===\n');
 console.log(`Configuration:`);
 console.log(`  Max outlets: ${MAX_OUTLETS}`);
 console.log(`  Start page: ${START_PAGE}`);
 console.log(`  Delay between outlets: ${DELAY_BETWEEN_OUTLETS}ms`);
+console.log(`  Pages per batch: ${PAGES_PER_BATCH}`);
+console.log(`  Batch delay: ${BATCH_DELAY_MIN / 1000}-${BATCH_DELAY_MAX / 1000} seconds`);
+console.log(`  Save interval: Every ${SAVE_INTERVAL} outlets`);
+console.log(`  Max retries: ${MAX_RETRIES}`);
+console.log(`\nMode: ${shouldResume ? '🔄 Resume' : shouldFreshStart ? '🆕 Fresh Start' : '🔍 Auto'}`);
 console.log(`\n💡 Press Ctrl+C to stop and cleanup gracefully\n`);
 
 scrapeWithMultilogin()
