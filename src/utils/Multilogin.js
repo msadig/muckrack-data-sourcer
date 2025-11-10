@@ -4,10 +4,23 @@ import crypto from 'crypto';
 /**
  * Multilogin API integration for Playwright
  * Handles authentication and browser profile management
+ *
+ * Supports both cloud-based and local Docker deployments:
+ * - Cloud: Set USE_LOCAL_DOCKER=false (default cloud endpoints)
+ * - Docker: Set USE_LOCAL_DOCKER=true (uses localhost:35000 and localhost:45001)
  */
 export class Multilogin {
-  static MLX_BASE = 'https://api.multilogin.com';
-  static MLX_LAUNCHER = 'https://launcher.mlx.yt:45001/api/v1';
+  // Check if running with local Docker setup
+  static USE_LOCAL_DOCKER = process.env.USE_LOCAL_DOCKER === 'true';
+
+  // API endpoints - use Docker local endpoints or cloud endpoints
+  static MLX_BASE = Multilogin.USE_LOCAL_DOCKER
+    ? 'http://localhost:35000/api/v2'
+    : 'https://api.multilogin.com';
+
+  static MLX_LAUNCHER = Multilogin.USE_LOCAL_DOCKER
+    ? 'https://localhost:45001/api/v1'
+    : 'https://launcher.mlx.yt:45001/api/v1';
 
   static REQUEST_HEADERS = {
     Accept: 'application/json',
@@ -19,6 +32,21 @@ export class Multilogin {
     this.folderId = folderId;
     this.profileId = profileId;
     this.token = null;
+
+    // Disable SSL verification for Docker localhost (self-signed certs)
+    if (Multilogin.USE_LOCAL_DOCKER && globalThis.process) {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    }
+
+    // Log which mode we're using
+    if (Multilogin.USE_LOCAL_DOCKER) {
+      console.log('🐳 Using local Docker Multilogin setup');
+      console.log(`   API: ${Multilogin.MLX_BASE}`);
+      console.log(`   Launcher: ${Multilogin.MLX_LAUNCHER}`);
+      console.log(`   ⚠️  SSL verification disabled for localhost`);
+    } else {
+      console.log('☁️  Using cloud-based Multilogin setup');
+    }
   }
 
   /**
@@ -171,10 +199,16 @@ export class Multilogin {
    */
   static async checkLauncher() {
     try {
-      const response = await fetch(`${Multilogin.MLX_LAUNCHER}/health`, {
-        method: 'GET',
-      });
-      return response.ok;
+      // Disable SSL verification for Docker localhost (self-signed certs)
+      if (Multilogin.USE_LOCAL_DOCKER && globalThis.process) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      }
+
+      // Try a simple connection test - any response (even 404) means it's accessible
+      await fetch(`${Multilogin.MLX_LAUNCHER}/`, { method: 'GET' });
+
+      // Any response (including 404) means the server is accessible
+      return true;
     } catch (error) {
       return false;
     }

@@ -1,0 +1,53 @@
+# Node modules and package files
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Data and logs
+data/
+logs/
+*.log
+
+# Development files
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files (we'll pass these as Docker env vars)
+.env.local
+.env.development
+.env.test
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Build artifacts
+dist/
+build/
+*.pid
+
+# MCP configuration files
+.mcp.json*
+
+# Claude-specific files
+.claude/
+.claude-code-sadigmuradov/
+
+# Keep .env for docker-compose to read
+!.env
+!.env.example

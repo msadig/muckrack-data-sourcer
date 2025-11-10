@@ -1,0 +1,96 @@
+
+services:
+  multilogin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    image: multilogin-browser:latest
+    container_name: multilogin-browser
+
+    # Environment variables - update these with your credentials
+    environment:
+      - ML_USERNAME=${MULTILOGIN_EMAIL:-your_username}
+      - ML_PASSWORD=${MULTILOGIN_PASSWORD:-your_password}
+      - VNC_PASSWORD=${VNC_PASSWORD:-vncpass}
+      - DISPLAY=:99
+      - XVFB_RESOLUTION=1920x1080x24
+
+    # Port mappings
+    ports:
+      - "35000:35000"  # Multilogin API port
+      - "45001:45001"  # Multilogin automation port
+      - "5900:5900"    # VNC port
+      - "6080:6080"    # noVNC web port
+
+    # Volumes for persistence
+    volumes:
+      - multilogin-profiles:/root/.local/share/multilogin
+      - multilogin-config:/root/.config/multilogin
+      - multilogin-data:/opt/multilogin/profiles
+      - ./data:/app/data  # Mount local data directory
+
+    # Resource limits (optional - adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:35000/api/v2/profile/list", "||", "exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network mode (use bridge for better isolation)
+    networks:
+      - multilogin-network
+
+    # Security options
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_ADMIN
+
+    # Platform specification for M1 Macs
+    platform: linux/amd64
+
+  # Optional: Add a reverse proxy for secure browser access
+  nginx:
+    image: nginx:alpine
+    container_name: multilogin-proxy
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - multilogin-network
+    depends_on:
+      - multilogin
+    profiles:
+      - proxy
+
+networks:
+  multilogin-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  multilogin-profiles:
+    driver: local
+  multilogin-config:
+    driver: local
+  multilogin-data:
+    driver: local
