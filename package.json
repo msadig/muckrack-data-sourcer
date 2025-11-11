@@ -20,13 +20,27 @@
     "multilogin": "node src/multilogin-scraper.js",
     "multilogin-outlets": "node src/multilogin-outlet-scraper.js",
     "force-stop": "node src/force-stop-profile.js",
-    "install-browsers": "playwright install chromium"
+    "install-browsers": "playwright install chromium",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:start:profiles": "pm2 start ecosystem.config.cjs --only muckrack-profiles-scraper",
+    "pm2:start:outlets": "pm2 start ecosystem.config.cjs --only muckrack-outlets-scraper",
+    "pm2:stop": "pm2 stop ecosystem.config.cjs",
+    "pm2:restart": "pm2 restart ecosystem.config.cjs",
+    "pm2:delete": "pm2 delete ecosystem.config.cjs",
+    "pm2:logs": "pm2 logs",
+    "pm2:logs:profiles": "pm2 logs muckrack-profiles-scraper",
+    "pm2:logs:outlets": "pm2 logs muckrack-outlets-scraper",
+    "pm2:status": "pm2 status",
+    "pm2:monit": "pm2 monit",
+    "pm2:save": "pm2 save",
+    "pm2:startup": "pm2 startup"
   },
   "keywords": ["scraping", "automation", "playwright"],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "playwright": "^1.40.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "pm2": "^5.3.0"
   }
 }
