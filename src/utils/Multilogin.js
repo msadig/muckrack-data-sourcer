@@ -23,7 +23,7 @@ export class Multilogin {
 
   static get MLX_LAUNCHER() {
     return this.USE_LOCAL_DOCKER
-      ? 'https://localhost:45001/api/v1'
+      ? 'http://localhost:45001/api/v1'
       : 'https://launcher.mlx.yt:45001/api/v1';
   }
 
