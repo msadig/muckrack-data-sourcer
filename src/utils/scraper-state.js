@@ -173,7 +173,7 @@ export class ScraperState {
 
     // Optionally save the extracted data
     if (data) {
-      const batchFile = path.join(this.batchDir, `outlet-${Date.now()}.json`);
+      const batchFile = path.join(this.batchDir, `item-${Date.now()}.json`);
       writeFileSync(batchFile, JSON.stringify({ url, data, timestamp: new Date().toISOString() }, null, 2));
     }
   }
@@ -294,21 +294,21 @@ export class ScraperState {
   }
 
   /**
-   * Save batch of outlet data
-   * @param {Array} outlets - Array of outlet data objects
+   * Save batch of item data
+   * @param {Array} items - Array of item data objects
    * @param {number} batchNumber - Batch identifier
    */
-  async saveBatch(outlets, batchNumber) {
+  async saveBatch(items, batchNumber) {
     const batchFile = path.join(this.batchDir, `batch-${String(batchNumber).padStart(3, '0')}.json`);
     const data = {
       batchNumber,
-      count: outlets.length,
+      count: items.length,
       timestamp: new Date().toISOString(),
-      outlets
+      items
     };
 
     writeFileSync(batchFile, JSON.stringify(data, null, 2));
-    console.log(`Batch ${batchNumber} saved: ${outlets.length} outlets`);
+    console.log(`Batch ${batchNumber} saved: ${items.length} items`);
   }
 }
 
