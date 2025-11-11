@@ -10,17 +10,22 @@ import crypto from 'crypto';
  * - Docker: Set USE_LOCAL_DOCKER=true (uses localhost:35000 and localhost:45001)
  */
 export class Multilogin {
-  // Check if running with local Docker setup
-  static USE_LOCAL_DOCKER = process.env.USE_LOCAL_DOCKER === 'true';
+  // Use getters for lazy evaluation (so env vars are read at runtime, not import time)
+  static get USE_LOCAL_DOCKER() {
+    return process.env.USE_LOCAL_DOCKER === 'true';
+  }
 
-  // API endpoints - use Docker local endpoints or cloud endpoints
-  static MLX_BASE = Multilogin.USE_LOCAL_DOCKER
-    ? 'http://localhost:35000/api/v2'
-    : 'https://api.multilogin.com';
+  static get MLX_BASE() {
+    return this.USE_LOCAL_DOCKER
+      ? 'http://localhost:35000/api/v2'
+      : 'https://api.multilogin.com';
+  }
 
-  static MLX_LAUNCHER = Multilogin.USE_LOCAL_DOCKER
-    ? 'https://localhost:45001/api/v1'
-    : 'https://launcher.mlx.yt:45001/api/v1';
+  static get MLX_LAUNCHER() {
+    return this.USE_LOCAL_DOCKER
+      ? 'https://localhost:45001/api/v1'
+      : 'https://launcher.mlx.yt:45001/api/v1';
+  }
 
   static REQUEST_HEADERS = {
     Accept: 'application/json',

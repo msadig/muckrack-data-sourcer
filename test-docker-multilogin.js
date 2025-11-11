@@ -1,5 +1,5 @@
-import { Multilogin } from './src/utils/Multilogin.js';
 import 'dotenv/config';
+import { Multilogin } from './src/utils/Multilogin.js';
 
 /**
  * Test script to verify Docker Multilogin setup

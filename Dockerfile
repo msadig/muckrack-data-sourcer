@@ -47,18 +47,12 @@ RUN apt-get update && apt-get install -y \
 # Create working directory
 WORKDIR /opt/multilogin
 
-# Download and install Multilogin
-# Since we're forcing linux/amd64 platform, we can directly install the amd64 package
-RUN wget -q https://cdn-download.multiloginapp.com/multilogin/6.4.5/multilogin-6.4.5-7-linux_x86_64.zip -O /tmp/multilogin.zip && \
+# Download and install Linux Multilogin 6.3.6 (version from official Docker docs)
+RUN wget -q https://cdn-download.multiloginapp.com/multilogin/6.3.6/multilogin-6.3.6-1-linux_x86_64.zip -O /tmp/multilogin.zip && \
     unzip -q /tmp/multilogin.zip -d /tmp/ && \
-    # Force installation and ignore dependency errors initially
     dpkg --force-all -i /tmp/multilogin.deb 2>/dev/null || true && \
-    # Fix any missing dependencies
     apt-get update && apt-get install -f -y && \
-    # Verify installation
-    dpkg -l | grep multilogin || echo "Warning: Multilogin package not fully installed" && \
-    # Find the actual installed files
-    find /opt -name "*multilogin*" -type d 2>/dev/null | head -5 && \
+    echo "Installed Multilogin 6.3.6" && \
     rm -rf /tmp/multilogin.zip /tmp/multilogin.deb
 
 # Create directories for Multilogin
@@ -66,12 +60,6 @@ RUN mkdir -p /root/.local/share/multilogin \
     /root/.config/multilogin \
     /opt/multilogin/profiles \
     /var/log/supervisor
-
-# Try to find and copy the Multilogin executable
-RUN find /opt /usr -name "multilogin" -type f 2>/dev/null | head -1 | xargs -I {} cp {} /opt/multilogin/multilogin 2>/dev/null || \
-    echo "Warning: Multilogin executable not found in standard locations" && \
-    # Check if MLM directory exists (alternative installation path)
-    ls -la /opt/mlm/ 2>/dev/null || echo "MLM directory not found"
 
 # Copy startup scripts
 COPY run.sh /opt/multilogin/run.sh
