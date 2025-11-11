@@ -160,7 +160,7 @@ async function scrapeWithMultilogin() {
 
           // Navigate to the specific page
           await page.goto(pageUrl, {
-            waitUntil: 'networkidle',
+            waitUntil: 'load',
             timeout: 60000
           });
 
@@ -307,8 +307,8 @@ async function scrapeWithMultilogin() {
           }
 
           await page.goto(profileUrl, {
-            waitUntil: 'networkidle',
-            timeout: 30000
+            waitUntil: 'load',
+            timeout: 60000
           });
 
           // Wait for profile content to load
