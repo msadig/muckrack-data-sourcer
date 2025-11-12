@@ -18,14 +18,14 @@ const shouldFreshStart = args.includes('--fresh');
 
 // Configuration
 const MUCKRACK_SEARCH_URL = 'https://forager.muckrack.com/search/results?sort=date&q=&result_type=person&search_source=homepage&user_recent_search=&embed=&person=&duplicate_group=&accepts_contributed=&topics_any=&topics_all=&topics_none=&article_types=&exclude_article_types=&domain_authority_range=&domain_authority_min=&domain_authority_max=&stations=&exclude_stations=&networks=&exclude_networks=&programs=&exclude_programs=&domains=&exclude_domains=&daterange_preset=8&daterange_starts=2024-10-21&timerange_starts=&daterange_ends=2025-10-21&timerange_ends=&timezone=&person_title=&beats=&covered_topics_any=&covered_topics_all=&covered_topics_none=&sources=&exclude_sources=&outlet_lists=&exclude_outlet_lists=&medialists=&exclude_medialists=&locations=43972&exclude_locations=&dmas=&exclude_dmas=&languages=&exclude_languages=';
-const MAX_PROFILES = 100; // Maximum number of profiles to scrape
+const MAX_PROFILES = 175000; // Maximum number of profiles to scrape
 const START_PAGE = 1; // Starting page number (useful for resuming scraping)
 const DELAY_BETWEEN_PROFILES = 2000; // 2 seconds delay between profile visits
 
 // Batch processing configuration
 const PAGES_PER_BATCH = 10; // Process this many pages before saving state
-const BATCH_DELAY_MIN = 4000; // Minimum delay between batches (4 seconds)
-const BATCH_DELAY_MAX = 8000; // Maximum delay between batches (8 seconds)
+const BATCH_DELAY_MIN = 8000; // Minimum delay between batches (4 seconds)
+const BATCH_DELAY_MAX = 15000; // Maximum delay between batches (8 seconds)
 const SAVE_INTERVAL = 10; // Save state every N profiles processed
 const MAX_RETRIES = 3; // Maximum retry attempts for failed URLs
 
