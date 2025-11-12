@@ -164,15 +164,34 @@ async function scrapeWithMultilogin() {
             timeout: 60000
           });
 
-          // Wait for search results to appear
-          await page.waitForSelector('[role="tabpanel"] h5', { timeout: 30000 });
+          // Check if page has results or shows "no results" message
+          const hasNoResults = await page.evaluate(() => {
+            const bodyText = document.body.textContent;
+            return bodyText.includes("didn't return any results") ||
+                   bodyText.includes("no results found");
+          });
+
+          if (hasNoResults) {
+            console.log(`    ⚠️  No more results available on page ${pageNum}`);
+            console.log(`    📍 Reached end of available pages (Muck Rack limit)`);
+            break;
+          }
+
+          // Wait for search results to appear (with fallback)
+          try {
+            await page.waitForSelector('[role="tabpanel"] h5', { timeout: 30000 });
+          } catch (error) {
+            console.log(`    ⚠️  No results found on page ${pageNum} (timeout waiting for results)`);
+            console.log(`    📍 Stopping collection at page ${pageNum - 1}`);
+            break;
+          }
 
           // Extract profile URLs from current page
           const pageProfileUrls = await extractProfileUrls(page);
           console.log(`    Found ${pageProfileUrls.length} profiles`);
 
           if (pageProfileUrls.length === 0) {
-            console.log(`    No profiles found on page ${pageNum}, stopping collection`);
+            console.log(`    ⚠️  No profiles found on page ${pageNum}, stopping collection`);
             break;
           }
 
