@@ -75,7 +75,7 @@ async function scrapeWithMultilogin() {
 
   // Initialize state manager
   const dataDir = join(__dirname, '..', 'data');
-  const state = new ScraperState(dataDir);
+  const state = new ScraperState(dataDir, 'outlets');
   globalState = state;
 
   // Handle resume vs fresh start

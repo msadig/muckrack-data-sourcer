@@ -8,11 +8,11 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import path from 'path';
 
 export class ScraperState {
-  constructor(baseDir = 'data') {
+  constructor(baseDir = 'data', prefix = 'urls') {
     this.stateDir = path.join(baseDir, 'state');
-    this.queueFile = path.join(this.stateDir, 'outlet-urls-queue.json');
-    this.visitedFile = path.join(this.stateDir, 'outlet-urls-visited.json');
-    this.failedFile = path.join(this.stateDir, 'outlet-urls-failed.json');
+    this.queueFile = path.join(this.stateDir, `${prefix}-queue.json`);
+    this.visitedFile = path.join(this.stateDir, `${prefix}-visited.json`);
+    this.failedFile = path.join(this.stateDir, `${prefix}-failed.json`);
     this.progressFile = path.join(this.stateDir, 'scraper-progress.json');
     this.batchDir = path.join(baseDir, 'batches');
 
